@@ -75,9 +75,10 @@ export function parseUnlighthouseResults(targetUrl: string): AuditResult | null 
 export function runUnlighthouseAudit(targetUrl: string, onComplete: (code: number | null) => void): void {
   console.log(`[Audit] Starting unlighthouse audit for: ${targetUrl}`)
 
-  // Spawn unlighthouse-ci process
+  // Spawn unlighthouse-ci process using pnpm exec to avoid npm permission issues
   const configPath = path.resolve(__dirname, '..', '..', 'unlighthouse.config.ts')
-  const unlighthouse = spawn('npx', [
+  const unlighthouse = spawn('pnpm', [
+    'exec',
     'unlighthouse-ci',
     '--site', targetUrl,
     '--config-file', configPath,

@@ -1,6 +1,6 @@
 // Configuration constants and environment variables
 
-export const PORT = 3000
+export const PORT = Number(process.env.PORT) || 3000
 export const PASSWORD = '123'
 export const DEFAULT_URL = 'https://terrariawars.com'
 
