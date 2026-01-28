@@ -118,7 +118,17 @@ export async function sendErrorNotificationEmail(url: string, errorCode: number 
     }
   })
 
-  const subject = `❌ [Audit Error] ${url} - Lighthouse 審計失敗 (退出代碼: ${errorCode})`
+  // 格式化時間戳
+  const timestamp = new Date().toLocaleString('zh-TW', { 
+    year: 'numeric',
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(/\//g, '-')
+  
+  const subject = `[${timestamp}] ❌ [Audit Error] ${url} - Lighthouse 審計失敗 (退出代碼: ${errorCode})`
   
   const htmlContent = `
     <!DOCTYPE html>
@@ -193,9 +203,19 @@ export async function sendAuditEmail(result: AuditResult, isPartialResult = fals
   const perfStatus = result.summary.performance >= 80 ? '✅' : '❌'
   const seoStatus = result.summary.seo >= 90 ? '✅' : '❌'
   
+  // 格式化時間戳
+  const timestamp = new Date().toLocaleString('zh-TW', { 
+    year: 'numeric',
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).replace(/\//g, '-')
+  
   // 如果是部分結果，在主旨中添加警告標記
   const warningPrefix = isPartialResult ? '⚠️ [Partial] ' : ''
-  const subject = `${warningPrefix}[Audit] ${result.url} - Performance: ${result.summary.performance} ${perfStatus} | SEO: ${result.summary.seo} ${seoStatus}`
+  const subject = `[${timestamp}] ${warningPrefix}[Audit] ${result.url} - Performance: ${result.summary.performance} ${perfStatus} | SEO: ${result.summary.seo} ${seoStatus}`
 
   try {
     await transporter.sendMail({
