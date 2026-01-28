@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.unlighthouse/
+*.log
+.DS_Store
+.env
+
