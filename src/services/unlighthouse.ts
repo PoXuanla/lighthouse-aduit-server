@@ -27,31 +27,48 @@ export function parseUnlighthouseResults(targetUrl: string): AuditResult | null 
     let totalSeo = 0
     let count = 0
 
-    // Parse each route result
+    // Parse each route result - 支援兩種格式
+    let routes: any[] = []
+    
     if (data.routes && Array.isArray(data.routes)) {
-      for (const route of data.routes) {
-        const performance = route.report?.categories?.performance?.score ?? 0
-        const seo = route.report?.categories?.seo?.score ?? 0
-        
-        const perfPercent = Math.round(performance * 100)
-        const seoPercent = Math.round(seo * 100)
-        
-        const pageResult: PageResult = {
-          path: route.path || route.route || 'unknown',
-          score: Math.round((perfPercent + seoPercent) / 2),
-          performance: perfPercent,
-          seo: seoPercent
-        }
-        
-        pages.push(pageResult)
-        totalPerformance += perfPercent
-        totalSeo += seoPercent
-        count++
+      // 標準格式：{routes: [...]}
+      routes = data.routes
+    } else if (Array.isArray(data)) {
+      // 簡化格式：[...]
+      routes = data
+    }
+    
+    for (const route of routes) {
+      let performance: number, seo: number
+      
+      if (route.report?.categories) {
+        // 標準 Lighthouse 報告格式
+        performance = route.report.categories.performance?.score ?? 0
+        seo = route.report.categories.seo?.score ?? 0
+      } else {
+        // 簡化格式
+        performance = route.performance ?? 0
+        seo = route.seo ?? 0
+      }
+      
+      const perfPercent = Math.round(performance * 100)
+      const seoPercent = Math.round(seo * 100)
+      
+      const pageResult: PageResult = {
+        path: route.path || route.route || 'unknown',
+        score: Math.round((perfPercent + seoPercent) / 2),
+        performance: perfPercent,
+        seo: seoPercent
+      }
+      
+      pages.push(pageResult)
+      totalPerformance += perfPercent
+      totalSeo += seoPercent
+      count++
 
-        // Check if failed budget
-        if (perfPercent < 80 || seoPercent < 90) {
-          failedPages.push(pageResult)
-        }
+      // Check if failed budget
+      if (perfPercent < 80 || seoPercent < 90) {
+        failedPages.push(pageResult)
       }
     }
 
@@ -72,7 +89,7 @@ export function parseUnlighthouseResults(targetUrl: string): AuditResult | null 
 }
 
 // Run unlighthouse audit
-export function runUnlighthouseAudit(targetUrl: string, onComplete: (code: number | null) => void): void {
+export function runUnlighthouseAudit(targetUrl: string, onComplete: (code: number | null, errorOutput?: string) => void): void {
   console.log(`[Audit] Starting unlighthouse audit for: ${targetUrl}`)
 
   // Spawn unlighthouse-ci process using pnpm exec to avoid npm permission issues
@@ -89,6 +106,8 @@ export function runUnlighthouseAudit(targetUrl: string, onComplete: (code: numbe
     shell: true
   })
 
+  let errorOutput = ''
+
   unlighthouse.stdout.on('data', (data: Buffer) => {
     const output = data.toString()
     console.log(`[Unlighthouse] ${output}`)
@@ -97,10 +116,11 @@ export function runUnlighthouseAudit(targetUrl: string, onComplete: (code: numbe
   unlighthouse.stderr.on('data', (data: Buffer) => {
     const output = data.toString()
     console.error(`[Unlighthouse Error] ${output}`)
+    errorOutput += output
   })
 
   unlighthouse.on('close', (code: number | null) => {
     console.log(`[Audit] Unlighthouse process exited with code ${code}`)
-    onComplete(code)
+    onComplete(code, errorOutput)
   })
 }

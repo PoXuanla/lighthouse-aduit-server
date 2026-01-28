@@ -5,7 +5,7 @@ import { AuditResult } from '../types.js'
 import { GMAIL_USER, GMAIL_APP_PASSWORD, GMAIL_TO } from '../config.js'
 
 // Generate HTML email content
-function generateEmailHtml(result: AuditResult): string {
+function generateEmailHtml(result: AuditResult, isPartialResult = false, errorCode?: number | null): string {
   const passEmoji = '✅'
   const failEmoji = '❌'
   
@@ -50,6 +50,16 @@ function generateEmailHtml(result: AuditResult): string {
           <strong>Time:</strong> ${new Date(result.timestamp).toLocaleString()}
         </p>
         
+        ${isPartialResult ? `
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 16px; margin: 16px 0;">
+          <h3 style="color: #92400e; margin-top: 0; margin-bottom: 8px;">⚠️ 部分結果警告</h3>
+          <p style="color: #78350f; margin: 0;">
+            此審計報告為<strong>部分完成結果</strong>。Lighthouse 在掃描過程中遇到了一些問題並提前停止（退出代碼: ${errorCode}），
+            但仍成功生成了部分頁面的審計數據。請檢查伺服器日誌以了解具體問題，並考慮重新執行完整審計。
+          </p>
+        </div>
+        ` : ''}
+        
         <h2 style="color: #374151; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">📊 Summary</h2>
         <div style="display: flex; gap: 24px; margin-bottom: 24px;">
           <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; flex: 1; text-align: center;">
@@ -93,8 +103,80 @@ function generateEmailHtml(result: AuditResult): string {
   `
 }
 
+// Send error notification email
+export async function sendErrorNotificationEmail(url: string, errorCode: number | null, errorDetails?: string): Promise<boolean> {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !GMAIL_TO) {
+    console.error('[Email] Missing Gmail configuration. Set GMAIL_USER, GMAIL_APP_PASSWORD, and GMAIL_TO in .env')
+    return false
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: GMAIL_USER,
+      pass: GMAIL_APP_PASSWORD
+    }
+  })
+
+  const subject = `❌ [Audit Error] ${url} - Lighthouse 審計失敗 (退出代碼: ${errorCode})`
+  
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
+      <div style="background: white; border-radius: 8px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #ef4444;">
+        <h1 style="color: #dc2626; margin-bottom: 8px;">❌ Lighthouse 審計失敗</h1>
+        <p style="color: #6b7280; margin-top: 0;">
+          <strong>URL:</strong> ${url}<br>
+          <strong>時間:</strong> ${new Date().toLocaleString()}<br>
+          <strong>退出代碼:</strong> ${errorCode}
+        </p>
+        
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: 16px; margin: 16px 0;">
+          <h3 style="color: #991b1b; margin-top: 0; margin-bottom: 8px;">錯誤詳情</h3>
+          <p style="color: #7f1d1d; margin: 0; font-family: monospace; font-size: 14px;">
+            ${errorDetails ? errorDetails.replace(/\n/g, '<br>') : '審計過程中遇到未知錯誤'}
+          </p>
+        </div>
+
+        <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; padding: 16px; margin: 16px 0;">
+          <h3 style="color: #0369a1; margin-top: 0; margin-bottom: 8px;">🔧 建議排查步驟</h3>
+          <ul style="color: #0c4a6e; margin: 0; padding-left: 20px;">
+            <li>檢查目標網站是否可正常訪問</li>
+            <li>確認網路連接正常</li>
+            <li>檢查伺服器日誌中的詳細錯誤信息</li>
+            <li>重新觸發審計請求</li>
+          </ul>
+        </div>
+
+        <p style="color: #9ca3af; font-size: 12px; margin-top: 24px; text-align: center;">
+          由 Audit Server 自動發送 • 如需重新審計，請重新發送 API 請求
+        </p>
+      </div>
+    </body>
+    </html>
+  `
+
+  try {
+    await transporter.sendMail({
+      from: GMAIL_USER,
+      to: GMAIL_TO,
+      subject,
+      html: htmlContent
+    })
+    console.log(`[Email] Error notification sent to ${GMAIL_TO}`)
+    return true
+  } catch (error) {
+    console.error('[Email] Failed to send error notification:', error)
+    return false
+  }
+}
+
 // Send email with audit results
-export async function sendAuditEmail(result: AuditResult): Promise<boolean> {
+export async function sendAuditEmail(result: AuditResult, isPartialResult = false, errorCode?: number | null): Promise<boolean> {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !GMAIL_TO) {
     console.error('[Email] Missing Gmail configuration. Set GMAIL_USER, GMAIL_APP_PASSWORD, and GMAIL_TO in .env')
     return false
@@ -110,14 +192,17 @@ export async function sendAuditEmail(result: AuditResult): Promise<boolean> {
 
   const perfStatus = result.summary.performance >= 80 ? '✅' : '❌'
   const seoStatus = result.summary.seo >= 90 ? '✅' : '❌'
-  const subject = `[Audit] ${result.url} - Performance: ${result.summary.performance} ${perfStatus} | SEO: ${result.summary.seo} ${seoStatus}`
+  
+  // 如果是部分結果，在主旨中添加警告標記
+  const warningPrefix = isPartialResult ? '⚠️ [Partial] ' : ''
+  const subject = `${warningPrefix}[Audit] ${result.url} - Performance: ${result.summary.performance} ${perfStatus} | SEO: ${result.summary.seo} ${seoStatus}`
 
   try {
     await transporter.sendMail({
       from: GMAIL_USER,
       to: GMAIL_TO,
       subject,
-      html: generateEmailHtml(result)
+      html: generateEmailHtml(result, isPartialResult, errorCode)
     })
     console.log(`[Email] Report sent to ${GMAIL_TO}`)
     return true

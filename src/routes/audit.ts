@@ -4,7 +4,7 @@ import { Request, Response } from 'express'
 import { AuditRequest } from '../types.js'
 import { PASSWORD, DEFAULT_URL } from '../config.js'
 import { runUnlighthouseAudit, parseUnlighthouseResults } from '../services/unlighthouse.js'
-import { sendAuditEmail } from '../services/email.js'
+import { sendAuditEmail, sendErrorNotificationEmail } from '../services/email.js'
 
 export function auditTerrariawars(req: Request<object, object, AuditRequest>, res: Response): void {
   const { password, url } = req.body
@@ -23,15 +23,30 @@ export function auditTerrariawars(req: Request<object, object, AuditRequest>, re
   const targetUrl = url || DEFAULT_URL
   
   // Start unlighthouse audit
-  runUnlighthouseAudit(targetUrl, async (code: number | null) => {
+  runUnlighthouseAudit(targetUrl, async (code: number | null, errorOutput?: string) => {
     if (code === 0) {
-      // Parse results and send email
+      // 正常完成，解析結果並發送郵件
       const result = parseUnlighthouseResults(targetUrl)
       if (result) {
+        console.log('[Audit] Audit completed successfully, sending report')
         await sendAuditEmail(result)
+      } else {
+        // 結果解析失敗，發送錯誤通知
+        console.error('[Audit] Failed to parse results, sending error notification')
+        await sendErrorNotificationEmail(targetUrl, code, '審計完成但結果解析失敗')
       }
     } else {
-      console.error('[Audit] Unlighthouse failed, skipping email')
+      // Unlighthouse 執行失敗，但檢查是否有部分結果
+      const result = parseUnlighthouseResults(targetUrl)
+      if (result && result.pages.length > 0) {
+        // 有部分結果，發送帶警告的審計報告
+        console.log(`[Audit] Partial results available (${result.pages.length} pages), sending partial report with warning`)
+        await sendAuditEmail(result, true, code)
+      } else {
+        // 完全沒有結果，發送錯誤通知
+        console.error('[Audit] No results available, sending error notification')
+        await sendErrorNotificationEmail(targetUrl, code, errorOutput)
+      }
     }
   })
 
