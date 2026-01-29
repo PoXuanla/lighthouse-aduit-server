@@ -5,7 +5,7 @@ import { AuditResult } from '../types.js'
 import { GMAIL_USER, GMAIL_APP_PASSWORD, GMAIL_TO } from '../config.js'
 
 // Generate HTML email content
-function generateEmailHtml(result: AuditResult, isPartialResult = false, errorCode?: number | null): string {
+function generateEmailHtml(result: AuditResult, isPartialResult = false, errorCode?: number | null, reportFilename?: string): string {
   const passEmoji = '✅'
   const failEmoji = '❌'
   
@@ -56,6 +56,19 @@ function generateEmailHtml(result: AuditResult, isPartialResult = false, errorCo
           <p style="color: #78350f; margin: 0;">
             此審計報告為<strong>部分完成結果</strong>。Lighthouse 在掃描過程中遇到了一些問題並提前停止（退出代碼: ${errorCode}），
             但仍成功生成了部分頁面的審計數據。請檢查伺服器日誌以了解具體問題，並考慮重新執行完整審計。
+          </p>
+        </div>
+        ` : ''}
+        
+        ${reportFilename ? `
+        <div style="background: #eff6ff; border: 1px solid #3b82f6; border-radius: 6px; padding: 16px; margin: 16px 0; text-align: center;">
+          <h3 style="color: #1e40af; margin-top: 0; margin-bottom: 12px;">🌐 線上查看完整報告</h3>
+          <a href="${process.env.SERVER_URL || 'http://localhost:3000'}/report/${reportFilename}" 
+             style="background: #3b82f6; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
+            📊 點擊查看詳細報告
+          </a>
+          <p style="color: #1e40af; margin: 8px 0 0 0; font-size: 0.9rem;">
+            此報告將永久保存，不會因服務重啟而消失
           </p>
         </div>
         ` : ''}
@@ -186,7 +199,7 @@ export async function sendErrorNotificationEmail(url: string, errorCode: number 
 }
 
 // Send email with audit results
-export async function sendAuditEmail(result: AuditResult, isPartialResult = false, errorCode?: number | null): Promise<boolean> {
+export async function sendAuditEmail(result: AuditResult, isPartialResult = false, errorCode?: number | null, reportFilename?: string): Promise<boolean> {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !GMAIL_TO) {
     console.error('[Email] Missing Gmail configuration. Set GMAIL_USER, GMAIL_APP_PASSWORD, and GMAIL_TO in .env')
     return false
@@ -222,7 +235,7 @@ export async function sendAuditEmail(result: AuditResult, isPartialResult = fals
       from: GMAIL_USER,
       to: GMAIL_TO,
       subject,
-      html: generateEmailHtml(result, isPartialResult, errorCode)
+      html: generateEmailHtml(result, isPartialResult, errorCode, reportFilename)
     })
     console.log(`[Email] Report sent to ${GMAIL_TO}`)
     return true

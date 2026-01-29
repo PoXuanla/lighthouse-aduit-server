@@ -8,3 +8,6 @@ export const DEFAULT_URL = 'https://terrariawars.com'
 export const GMAIL_USER = process.env.GMAIL_USER
 export const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
 export const GMAIL_TO = process.env.GMAIL_TO
+
+// Server configuration
+export const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`
